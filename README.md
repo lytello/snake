@@ -2,7 +2,7 @@
 
 (Vibe) coded Snake. 
 
-![](https://cdn.lawrencetello.com/videos/snake/snake_vid_ex.mp4)
+![](images/1_start_screen.png)
 
 ## Added features:
 
@@ -35,3 +35,11 @@
    ```bash
    python snake.py
    ```
+
+# Screenshots
+
+![](images/2_score_3.png)
+
+![](images/3_score_8.png)
+
+![](images/4_score_43.png)
