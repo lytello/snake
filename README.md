@@ -36,6 +36,18 @@
    python snake.py
    ```
 
+## Play in a browser
+
+Two web versions live in [`web/`](web/):
+
+- **`web/canvas/`** — a vanilla-JS HTML5 canvas reimplementation. No build
+  step; just open `web/canvas/index.html`. This is the version embedded on
+  [lawrencetello.com](https://lawrencetello.com).
+- **`web/pygame/`** — the real pygame game compiled to WebAssembly with
+  [pygbag](https://github.com/pygame-web/pygbag) (`pip install pygbag && cd web/pygame && pygbag .`).
+
+See [`web/README.md`](web/README.md) for details.
+
 # Screenshots
 
 ![](images/2_score_3.png)

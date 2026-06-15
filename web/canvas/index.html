@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Snake</title>
+<style>
+  :root { --accent: #00ff7f; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #0d0d0c; color: #c8c8c8;
+    font-family: "Courier New", ui-monospace, monospace;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1rem;
+  }
+  .frame { border: 1px solid #333; background: #1a1a18; line-height: 0; }
+  canvas {
+    display: block; width: min(92vw, 760px); height: auto;
+    aspect-ratio: 4 / 3; outline: none; cursor: pointer; touch-action: none;
+  }
+  .hint { font-size: 0.78rem; letter-spacing: 0.03em; text-align: center; color: #888; }
+  .hint b { color: var(--accent); }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <canvas id="snake-canvas" width="800" height="600" tabindex="0"
+            aria-label="Snake game. Use arrow keys or WASD to play."></canvas>
+  </div>
+  <p class="hint">
+    <b>&larr; &uarr; &darr; &rarr;</b> or <b>WASD</b> to steer &middot;
+    <b>Enter</b> start &middot; <b>C</b> restart &middot; swipe on touch
+  </p>
+
+<script>
+/*
+ * Snake — HTML5 canvas port of snake.py.
+ * Faithful to the pygame original: edge-wrapping, neon color pairs that
+ * cycle every 5 points, particle bursts on eat, circular segments with eyes.
+ * No dependencies — drop this file anywhere and open it.
+ */
+(function () {
+  const canvas = document.getElementById("snake-canvas");
+  const ctx = canvas.getContext("2d");
+
+  const W = 800, H = 600, CELL = 20;
+  const COLS = W / CELL, ROWS = H / CELL;
+  const STEP_MS = 1000 / 15;
+  const BG = "#1a1a18";
+  const SCORE_GRAY = "rgb(200,200,200)";
+
+  const PAIRS = [
+    [[0, 255, 127], [255, 50, 100]],
+    [[0, 191, 255], [255, 140, 0]],
+    [[255, 0, 255], [0, 255, 200]],
+    [[147, 112, 219], [255, 215, 0]],
+    [[255, 69, 0], [0, 255, 255]],
+    [[255, 255, 0], [0, 128, 255]],
+  ];
+  const rgb = (c, a) => a == null
+    ? `rgb(${c[0]},${c[1]},${c[2]})`
+    : `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+  let state = "start", snake, dir, nextDir, food, pairIndex, particles;
+  let best = (() => { try { return parseInt(localStorage.getItem("snake-best")) || 0; } catch (e) { return 0; } })();
+
+  function reset() {
+    const cx = Math.floor(COLS / 2), cy = Math.floor(ROWS / 2);
+    snake = [{ x: cx, y: cy }];
+    dir = { x: 1, y: 0 };
+    nextDir = { x: 1, y: 0 };
+    pairIndex = 0; particles = [];
+    spawnFood();
+  }
+  function spawnFood() {
+    do {
+      food = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
+    } while (snake.some(s => s.x === food.x && s.y === food.y));
+  }
+  const snakeColor = () => PAIRS[pairIndex % PAIRS.length][0];
+  const foodColor = () => PAIRS[pairIndex % PAIRS.length][1];
+
+  function addParticles(cx, cy, color) {
+    for (let i = 0; i < 8; i++) {
+      particles.push({
+        x: cx, y: cy, color,
+        vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
+        life: 20, size: 2 + Math.random() * 2,
+      });
+    }
+  }
+
+  function step() {
+    dir = nextDir;
+    let hx = snake[0].x + dir.x, hy = snake[0].y + dir.y;
+    if (hx >= COLS) hx = 0; else if (hx < 0) hx = COLS - 1;
+    if (hy >= ROWS) hy = 0; else if (hy < 0) hy = ROWS - 1;
+    const head = { x: hx, y: hy };
+    const ate = head.x === food.x && head.y === food.y;
+    const body = ate ? snake : snake.slice(0, -1);
+    if (body.some(s => s.x === head.x && s.y === head.y)) {
+      state = "over";
+      const score = snake.length - 1;
+      if (score > best) { best = score; try { localStorage.setItem("snake-best", String(best)); } catch (e) {} }
+      return;
+    }
+    snake.unshift(head);
+    if (ate) {
+      addParticles(head.x * CELL + CELL / 2, head.y * CELL + CELL / 2, foodColor());
+      if ((snake.length - 1) % 5 === 0) pairIndex++;
+      spawnFood();
+    } else snake.pop();
+  }
+
+  function drawScoreBox(score) {
+    ctx.font = "24px 'Courier New', monospace";
+    ctx.textBaseline = "top"; ctx.textAlign = "left";
+    const text = `[SCORE: ${score}]`;
+    const tw = ctx.measureText(text).width, pad = 10, x = W - 20 - tw, y = 20;
+    ctx.fillStyle = "rgba(50,50,50,0.25)";
+    ctx.fillRect(x - pad, y - pad, tw + pad * 2, 24 + pad * 2);
+    ctx.strokeStyle = SCORE_GRAY; ctx.lineWidth = 1;
+    ctx.strokeRect(x - pad, y - pad, tw + pad * 2, 24 + pad * 2);
+    ctx.fillStyle = SCORE_GRAY; ctx.fillText(text, x, y);
+  }
+
+  function drawSnake() {
+    const col = snakeColor();
+    for (let i = snake.length - 1; i >= 1; i--) {
+      const s = snake[i];
+      ctx.fillStyle = rgb(col);
+      ctx.beginPath();
+      ctx.arc(s.x * CELL + CELL / 2, s.y * CELL + CELL / 2, CELL / 2 - 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const h = snake[0], cx = h.x * CELL + CELL / 2, cy = h.y * CELL + CELL / 2;
+    ctx.fillStyle = rgb(col);
+    ctx.beginPath(); ctx.arc(cx, cy, CELL / 2, 0, Math.PI * 2); ctx.fill();
+    const ang = Math.atan2(dir.y, dir.x), off = 0.45, dist = 5;
+    for (const s of [-1, 1]) {
+      const ex = cx + Math.cos(ang + s * off) * dist;
+      const ey = cy + Math.sin(ang + s * off) * dist;
+      ctx.fillStyle = "rgb(255,255,255)";
+      ctx.beginPath(); ctx.arc(ex, ey, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "rgb(0,0,0)";
+      ctx.beginPath(); ctx.arc(ex, ey, 1.3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.fillStyle = rgb(p.color, Math.max(0, p.life / 20));
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0, p.size), 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  function updateParticles() {
+    for (const p of particles) { p.x += p.vx; p.y += p.vy; p.life -= 1; p.size -= 0.1; }
+    particles = particles.filter(p => p.life > 0);
+  }
+
+  function pointOnRect(r, pos) {
+    if (pos < r.w) return [r.x + pos, r.y];
+    pos -= r.w; if (pos < r.h) return [r.x + r.w, r.y + pos];
+    pos -= r.h; if (pos < r.w) return [r.x + r.w - pos, r.y + r.h];
+    pos -= r.w; return [r.x, r.y + r.h - pos];
+  }
+  let titlePos = 0, titlePair = 0, titleTick = 0;
+  function drawStart() {
+    const word = "SNAKE";
+    ctx.font = "bold 110px Arial, system-ui, sans-serif";
+    ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    const widths = [...word].map(ch => ctx.measureText(ch).width);
+    const total = widths.reduce((a, b) => a + b, 0);
+    let x = (W - total) / 2; const baseY = H / 2 + 10;
+    [...word].forEach((ch, i) => {
+      ctx.fillStyle = rgb(PAIRS[i % PAIRS.length][0]);
+      ctx.fillText(ch, x, baseY); x += widths[i];
+    });
+    const m = 55;
+    const rect = { x: (W - total) / 2 - m, y: H / 2 - 80 - m, w: total + 2 * m, h: 120 + 2 * m };
+    const per = 2 * (rect.w + rect.h), col = PAIRS[titlePair][0];
+    for (let i = 12; i >= 1; i--) {
+      const [sx, sy] = pointOnRect(rect, (titlePos - i * 18 + per * 4) % per);
+      ctx.fillStyle = rgb(col);
+      ctx.beginPath(); ctx.arc(sx, sy, CELL / 2, 0, Math.PI * 2); ctx.fill();
+    }
+    const [hx, hy] = pointOnRect(rect, ((titlePos % per) + per) % per);
+    ctx.beginPath(); ctx.arc(hx, hy, CELL / 2 + 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = SCORE_GRAY;
+    ctx.font = "26px 'Courier New', monospace"; ctx.textAlign = "center";
+    ctx.fillText("Press ENTER  /  tap to start", W / 2, rect.y + rect.h + 50);
+    ctx.textAlign = "left";
+    titlePos = (titlePos + 4) % per;
+    if (++titleTick % 300 === 0) titlePair = (titlePair + 1) % PAIRS.length;
+  }
+
+  function drawFoodAndSnake() {
+    ctx.fillStyle = rgb(foodColor());
+    ctx.beginPath();
+    ctx.arc(food.x * CELL + CELL / 2, food.y * CELL + CELL / 2, CELL / 2, 0, Math.PI * 2);
+    ctx.fill();
+    drawSnake(); drawParticles(); drawScoreBox(snake.length - 1);
+  }
+  function drawOver() {
+    drawFoodAndSnake();
+    ctx.fillStyle = "rgba(26,26,24,0.78)"; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = "center";
+    ctx.fillStyle = rgb(foodColor());
+    ctx.font = "bold 64px Arial, system-ui, sans-serif";
+    ctx.fillText("GAME OVER", W / 2, H / 2 - 30);
+    ctx.fillStyle = SCORE_GRAY; ctx.font = "26px 'Courier New', monospace";
+    ctx.fillText(`Score: ${snake.length - 1}   Best: ${best}`, W / 2, H / 2 + 20);
+    ctx.fillText("Press C  /  tap to play again", W / 2, H / 2 + 60);
+    ctx.textAlign = "left";
+  }
+
+  let last = 0, acc = 0;
+  function frame(t) {
+    const dt = t - last; last = t; acc += dt;
+    ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+    if (state === "start") drawStart();
+    else if (state === "playing") {
+      while (acc >= STEP_MS) { acc -= STEP_MS; if (state === "playing") step(); }
+      updateParticles(); drawFoodAndSnake();
+    } else { updateParticles(); drawOver(); }
+    requestAnimationFrame(frame);
+  }
+
+  function startGame() { reset(); state = "playing"; acc = 0; }
+  function turn(dx, dy) {
+    if (state !== "playing") return;
+    if (dx === -dir.x && dy === -dir.y) return;
+    nextDir = { x: dx, y: dy };
+  }
+  function activate() { if (state !== "playing") startGame(); }
+
+  const KEYS = {
+    ArrowLeft: [-1, 0], a: [-1, 0], A: [-1, 0],
+    ArrowRight: [1, 0], d: [1, 0], D: [1, 0],
+    ArrowUp: [0, -1], w: [0, -1], W: [0, -1],
+    ArrowDown: [0, 1], s: [0, 1], S: [0, 1],
+  };
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { if (state !== "playing") { e.preventDefault(); startGame(); } return; }
+    if ((e.key === "c" || e.key === "C") && state === "over") { startGame(); return; }
+    if (KEYS[e.key]) { e.preventDefault(); turn(KEYS[e.key][0], KEYS[e.key][1]); }
+  });
+  canvas.addEventListener("click", () => { canvas.focus(); activate(); });
+  let tsx = 0, tsy = 0;
+  canvas.addEventListener("touchstart", (e) => { const t = e.touches[0]; tsx = t.clientX; tsy = t.clientY; }, { passive: true });
+  canvas.addEventListener("touchend", (e) => {
+    const t = e.changedTouches[0], dx = t.clientX - tsx, dy = t.clientY - tsy;
+    if (Math.abs(dx) < 24 && Math.abs(dy) < 24) { activate(); return; }
+    if (Math.abs(dx) > Math.abs(dy)) turn(dx > 0 ? 1 : -1, 0); else turn(0, dy > 0 ? 1 : -1);
+  }, { passive: true });
+
+  reset();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
